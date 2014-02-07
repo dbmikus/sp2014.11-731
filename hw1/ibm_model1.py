@@ -20,21 +20,24 @@ def prepare_iters(bitext):
             # translation
             # TODO if we include the null string, remove the + 1 from
             # the denominator
-            f_e_expect[f_j] += (float(f_count[f_j]) / (len(f) + 1)) * len(e)
+            # f_source_expect[f_j] += (float(f_count[f_j]) / (len(f) + 1)) * len(e)
 
             # Determining the expected number of times f_j translates to e_i in
             # sentence pair (f, e)
             for (e_i, ce) in e_count.items():
-                f_source_expect[(f_j, e_i)] += (float(f_count[f_j])
-                                                / (len(f) + 1)) * e_count[e_i]
-
-    return (f_e_expect, f_source_expect)
-
-
-        for (f_j, c) in f_count.items():
+                trans_prob = (float(f_count[f_j]) / (len(f) + 1)) * e_count[e_i]
+                f_e_expect[(f_j, e_i)] += trans_prob
+                f_source_expect[f_j] += trans_prob
 
 
-def ibm_model1(bitext, f_count, e_count, fe_count):
+    p_e_f = defaultdict(int)
+    for ((f_j, e_i), trans_exp) in f_e_expect.items():
+        p_e_f[(f_j, e_i)] = f_e_expect[(f_j, e_i)] / f_source_expect[f_j]
+
+    return p_e_f
+
+
+def ibm_model1(bitext, me_iters, f_count, e_count, fe_count):
     # p(e | f, m): this is a dictionary that stores probabilities for
     # translations of (e_i,f_j) pairs
     p_e_fm = defaultdict(int)
@@ -45,10 +48,12 @@ def ibm_model1(bitext, f_count, e_count, fe_count):
     #   f_e = number of times source word f aligns to target word e
     #   a_f = number of times that f was used as the translation source word
     # We start out with uniform probabilities for each translation (f_j, e_i).
-    p_e_f = {}
+    p_e_f = prepare_iters(bitext)
     # p_e_f = defaultdict(lambda k: 1.0 / float(len(fe_count.keys())))
 
-    for (f, e) in bitext:
+    for i in xrange(me_iters):
+        for (f, e) in bitext:
+            (p_e_fm, p_e_f) = prob_pair(p_e_fm, p_e_f, f, e)
 
 
 # For each i in [1, m] (that is, for each empty word spot in the target
