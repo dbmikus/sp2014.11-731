@@ -11,7 +11,7 @@ for (n, (f_e, a)) in enumerate(zip(bitext, sys.stdin)):
   (f,e) = f_e.split(' ||| ')
   size_f = len(f.strip().split())
   size_e = len(e.strip().split())
-  try: 
+  try:
     alignment = set([tuple(map(int, x.split("-"))) for x in a.strip().split()])
     for (i,j) in alignment:
       if (i>=size_f or j>size_e):
@@ -24,7 +24,7 @@ for (n, (f_e, a)) in enumerate(zip(bitext, sys.stdin)):
   sys.stdout.write(a)
 
 warned = False
-for a in (sys.stdin): 
+for a in (sys.stdin):
   if not warned:
     sys.stderr.write("WARNING (%s): alignment file is longer than bitext\n" % sys.argv[0])
     warned = True
@@ -35,4 +35,3 @@ try:
     sys.stderr.write("WARNING (%s): bitext is longer than alignment\n" % sys.argv[0])
 except (StopIteration):
   pass
-  

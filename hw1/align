@@ -2,6 +2,7 @@
 import optparse
 import sys
 from collections import defaultdict
+from ibm_model1 import ibm_model1
 
 optparser = optparse.OptionParser()
 optparser.add_option("-b", "--bitext", dest="bitext", default="data/dev-test-train.de-en", help="Parallel corpus (default data/dev-test-train.de-en)")
@@ -11,8 +12,13 @@ optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxi
 
 sys.stderr.write("Training with Dice's coefficient...")
 bitext = [[sentence.strip().split() for sentence in pair.split(' ||| ')] for pair in open(opts.bitext)][:opts.num_sents]
+
+# a mapping from source words to their count
 f_count = defaultdict(int)
+# a mapping from target words to their count
 e_count = defaultdict(int)
+# A mapping from pairs of source and target words to the count of that pair.
+# This counts something as a pair if both appear in a given (f,e) sentence pair.
 fe_count = defaultdict(int)
 for (n, (f, e)) in enumerate(bitext):
   for f_i in set(f):
@@ -24,16 +30,21 @@ for (n, (f, e)) in enumerate(bitext):
   if n % 500 == 0:
     sys.stderr.write(".")
 
-dice = defaultdict(int)
-for (k, (f_i, e_j)) in enumerate(fe_count.keys()):
-  dice[(f_i,e_j)] = 2.0 * fe_count[(f_i, e_j)] / (f_count[f_i] + e_count[e_j])
-  if k % 5000 == 0:
-    sys.stderr.write(".")
-sys.stderr.write("\n")
+def dice(bitext, f_count, e_count, fe_count):
+    dice = defaultdict(int)
+    for (k, (f_i, e_j)) in enumerate(fe_count.keys()):
+      dice[(f_i,e_j)] = 2.0 * fe_count[(f_i, e_j)] / (f_count[f_i] + e_count[e_j])
+      if k % 5000 == 0:
+        sys.stderr.write(".")
+    sys.stderr.write("\n")
 
-for (f, e) in bitext:
-  for (i, f_i) in enumerate(f): 
-    for (j, e_j) in enumerate(e):
-      if dice[(f_i,e_j)] >= opts.threshold:
-        sys.stdout.write("%i-%i " % (i,j))
-  sys.stdout.write("\n")
+    for (f, e) in bitext:
+      for (i, f_i) in enumerate(f):
+        for (j, e_j) in enumerate(e):
+          if dice[(f_i,e_j)] >= opts.threshold:
+            sys.stdout.write("%i-%i " % (i,j))
+      sys.stdout.write("\n")
+
+
+# dice(bitext)
+ibm_model1(bitext)
