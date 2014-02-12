@@ -3,3 +3,8 @@ updates.
 
 Choose the alignment that gives the maximum translation probability for the
 sentence.
+
+Find out how we handle word dropping for IBM model 1. Do we just use a threshold?
+
+Find out we should handle reporting alignments where some e_i has its source
+alignment to the null string.
