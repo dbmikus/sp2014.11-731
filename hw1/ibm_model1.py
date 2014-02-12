@@ -8,6 +8,9 @@ def prepare_iters(bitext):
     f_source_expect = defaultdict(float)
 
     for (f, e) in bitext:
+        # we clone the list so we don't have issues with extra null string
+        # insertions in the bitext
+        f = list(f)
         # We include the null token as an option for a word translation in the
         # source language.
         f.insert(0, '')
@@ -45,6 +48,63 @@ def compute_pef_probs(f_e_expect, f_source_expect):
 
 
 def ibm_model1(bitext, me_iters):
+    (p_e_fm, p_e_f) = run_iterations(bitext, me_iters)
+
+    alignments = get_max_alignments(bitext, p_e_fm, p_e_f)
+
+    # Convert the lines to the string format we need:
+    # That is, "%i-%i" <--- substituting in source index and target index
+    str_alignments = []
+    for sentence_alignment in alignments:
+        align_strings = ['%i-%i' % (align_pair[0], align_pair[1])
+                         for align_pair in sentence_alignment]
+        str_alignments.append(' '.join(align_strings))
+
+    # append a blank string so we end with a newline
+    str_alignments.append('')
+    return '\n'.join(str_alignments)
+
+
+def get_max_alignments(bitext, p_e_fm, p_e_f):
+    """
+    Determine the best alignments for sentences.
+    """
+    alignments = []
+    for (f,e) in bitext:
+        sentence_alignment = get_max_sentence_alignment(f, e, p_e_fm, p_e_f)
+        alignments.append(sentence_alignment)
+
+    return alignments
+
+
+def get_max_sentence_alignment(f, e, p_e_fm, p_e_f):
+    # we clone the list so we don't have issues with extra null string
+    # insertions in the bitext
+    f = list(f)
+    # add the null token as an empty string
+    f.insert(0, '')
+
+    alignments = []
+    for (i, e_i) in enumerate(e):
+        max_j = None
+        max_prob = 0
+        for (j, f_j) in enumerate(f):
+            if p_e_f[(f_j, e_i)] > max_prob:
+                max_prob = p_e_f[(f_j, e_i)]
+                max_j = j
+
+        # if it is aligned to null string or there were no non-zero probability
+        # alignments, then drop that alignment recording
+        if (max_j is not None and max_j != 0):
+            alignments.append((max_j, i))
+
+    return alignments
+
+
+def run_iterations(bitext, me_iters):
+    """
+    Runs the EM iterations
+    """
     # p(e | f, m): this is a dictionary that stores probabilities for
     # translations of (e_i,f_j) pairs.
     # This is a the probability for the translation of sentences.
@@ -78,9 +138,7 @@ def ibm_model1(bitext, me_iters):
         # Updating the probabilities for translations between words
         p_e_f = compute_pef_probs(f_e_expect, f_source_expect)
 
-    print p_e_f
-
-    return "formatted alignments expected here"
+    return (p_e_fm, p_e_f)
 
 
 # For each i in [1, m] (that is, for each empty word spot in the target
@@ -91,6 +149,9 @@ def ibm_model1(bitext, me_iters):
 #
 # me_iters is the number of ME iterations we do to improve our probabilities.
 def prob_pair(p_e_f, f, e):
+    # we clone the list so we don't have issues with extra null string
+    # insertions in the bitext
+    f = list(f)
     # add the null token as an empty string
     f.insert(0, '')
 
