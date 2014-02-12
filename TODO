@@ -1,0 +1,5 @@
+Determine if we include the null string when we are performing our iterative EM
+updates.
+
+Choose the alignment that gives the maximum translation probability for the
+sentence.

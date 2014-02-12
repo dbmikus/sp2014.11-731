@@ -13,24 +13,24 @@ optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxi
 sys.stderr.write("Training with Dice's coefficient...")
 bitext = [[sentence.strip().split() for sentence in pair.split(' ||| ')] for pair in open(opts.bitext)][:opts.num_sents]
 
-# a mapping from source words to their count
-f_count = defaultdict(int)
-# a mapping from target words to their count
-e_count = defaultdict(int)
-# A mapping from pairs of source and target words to the count of that pair.
-# This counts something as a pair if both appear in a given (f,e) sentence pair.
-fe_count = defaultdict(int)
-for (n, (f, e)) in enumerate(bitext):
-  for f_i in set(f):
-    f_count[f_i] += 1
-    for e_j in set(e):
-      fe_count[(f_i,e_j)] += 1
-  for e_j in set(e):
-    e_count[e_j] += 1
-  if n % 500 == 0:
-    sys.stderr.write(".")
+def dice(bitext):
+    # a mapping from source words to their count
+    f_count = defaultdict(int)
+    # a mapping from target words to their count
+    e_count = defaultdict(int)
+    # A mapping from pairs of source and target words to the count of that pair.
+    # This counts something as a pair if both appear in a given (f,e) sentence pair.
+    fe_count = defaultdict(int)
+    for (n, (f, e)) in enumerate(bitext):
+      for f_i in set(f):
+        f_count[f_i] += 1
+        for e_j in set(e):
+          fe_count[(f_i,e_j)] += 1
+      for e_j in set(e):
+        e_count[e_j] += 1
+      if n % 500 == 0:
+        sys.stderr.write(".")
 
-def dice(bitext, f_count, e_count, fe_count):
     dice = defaultdict(int)
     for (k, (f_i, e_j)) in enumerate(fe_count.keys()):
       dice[(f_i,e_j)] = 2.0 * fe_count[(f_i, e_j)] / (f_count[f_i] + e_count[e_j])
@@ -47,4 +47,4 @@ def dice(bitext, f_count, e_count, fe_count):
 
 
 # dice(bitext)
-ibm_model1(bitext)
+sys.stdout.write(ibm_model1(bitext, 5))
