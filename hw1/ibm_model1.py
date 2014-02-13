@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from collections import defaultdict
+import sys
 
 verbose = False
 def vprint(string):
@@ -8,9 +9,8 @@ def vprint(string):
     Prints the input string if verbose mode is on.
     """
     if verbose:
-        print string
+        sys.stderr.write(string + '\n')
 
-# TODO should we include the null string when we do this?
 def prepare_iters(bitext):
     # The number of times that a given word, f_x, could translate to e_y
     # throughout the whole corpus
@@ -19,7 +19,7 @@ def prepare_iters(bitext):
     # anything
     f_source_count = defaultdict(int)
 
-    for (f, e) in bitext:
+    for (n, (f, e)) in enumerate(bitext):
         # We include the null token as an option for a word translation in the
         # source language.
         f.insert(0, '')
@@ -34,6 +34,8 @@ def prepare_iters(bitext):
                 # probabilities for p(e_i | f_j)
                 f_e_count[(f_j, e_i)] += 1
                 f_source_count[f_j] += 1
+        if n % 500 == 0:
+            sys.stderr.write('.')
 
     # Normalize the counts and use this as our starting probabilities
     # for p(e_i | f_j)
@@ -43,8 +45,10 @@ def prepare_iters(bitext):
 def ibm_model1(bitext, me_iters):
     p_e_f = run_iterations(bitext, me_iters)
 
+    sys.stderr.write("\nGetting most likely alignments...\n")
     alignments = get_max_alignments(bitext, p_e_f)
 
+    sys.stderr.write("\nFormatting alignments...\n")
     # Convert the lines to the string format we need:
     # That is, "%i-%i" <--- substituting in source index and target index
     str_alignments = []
@@ -63,9 +67,11 @@ def get_max_alignments(bitext, p_e_f):
     Determine the best alignments for sentences.
     """
     alignments = []
-    for (f,e) in bitext:
+    for (n, (f,e)) in enumerate(bitext):
         sentence_alignment = get_max_sentence_alignment(f, e, p_e_f)
         alignments.append(sentence_alignment)
+        if n % 500 == 0:
+            sys.stderr.write('.')
 
     return alignments
 
@@ -128,9 +134,9 @@ def run_iterations(bitext, me_iters):
     # We start out with uniform probabilities for each translation (f_j, e_i).
     p_e_f = prepare_iters(bitext)
     vprint(p_e_f)
+    sys.stderr.write('\nDone preparing parameters. Beginning iterations...\n')
 
     for i in xrange(me_iters):
-        vprint("On iteration " + str(i))
         # The expected number of times we translate from a given word f_j to a
         # given word e_i.
         f_e_expect = defaultdict(float)
@@ -140,7 +146,7 @@ def run_iterations(bitext, me_iters):
         # We update the expected counts for the number of translations from f_j
         # to e_i and the expected number of translations from f_j to any word in
         # the target language.
-        for (f, e) in bitext:
+        for (n, (f, e)) in enumerate(bitext):
             for (i, e_i) in enumerate(e):
                 for (j, f_j) in enumerate(f):
                     vprint('p_e_f[(' + f_j + ',' + e_i + ')] = ' + str(p_e_f[(f_j, e_i)]))
@@ -155,8 +161,11 @@ def run_iterations(bitext, me_iters):
                     prob_trans = p_e_f[(f_j, e_i)]
                     f_e_expect[(f_j, e_i)] += prob_trans / total_e[e_i]
                     f_source_expect[f_j] += prob_trans / total_e[e_i]
+            if n % 500 == 0:
+                sys.stderr.write('.')
 
         # Updating the probabilities for translations between words
         p_e_f = compute_pef_probs(f_e_expect, f_source_expect)
+        sys.stderr.write("Done with iteration " + str(i) + '\n')
 
     return p_e_f

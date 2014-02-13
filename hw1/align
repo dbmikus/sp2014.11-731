@@ -11,7 +11,8 @@ optparser.add_option("-t", "--threshold", dest="threshold", default=0.5, type="f
 optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxint, type="int", help="Number of sentences to use for training and alignment")
 (opts, _) = optparser.parse_args()
 
-sys.stderr.write("Training with Dice's coefficient...")
+# sys.stderr.write("Training with Dice's coefficient...")
+sys.stderr.write("Training with IBM Model 1...")
 bitext = [[sentence.strip().split() for sentence in pair.split(' ||| ')] for pair in open(opts.bitext)][:opts.num_sents]
 
 def dice(bitext):
