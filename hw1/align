@@ -3,6 +3,7 @@ import optparse
 import sys
 from collections import defaultdict
 from ibm_model1 import ibm_model1
+from other_ibm import run_shit
 
 optparser = optparse.OptionParser()
 optparser.add_option("-b", "--bitext", dest="bitext", default="data/dev-test-train.de-en", help="Parallel corpus (default data/dev-test-train.de-en)")
