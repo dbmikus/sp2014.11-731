@@ -136,7 +136,7 @@ def run_iterations(bitext, me_iters):
     vprint(p_e_f)
     sys.stderr.write('\nDone preparing parameters. Beginning iterations...\n')
 
-    for i in xrange(me_iters):
+    for iterNum in xrange(me_iters):
         # The expected number of times we translate from a given word f_j to a
         # given word e_i.
         f_e_expect = defaultdict(float)
@@ -166,6 +166,6 @@ def run_iterations(bitext, me_iters):
 
         # Updating the probabilities for translations between words
         p_e_f = compute_pef_probs(f_e_expect, f_source_expect)
-        sys.stderr.write("Done with iteration " + str(i) + '\n')
+        sys.stderr.write("Done with iteration " + str(iterNum) + '\n')
 
     return p_e_f
