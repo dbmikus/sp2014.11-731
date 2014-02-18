@@ -27,6 +27,12 @@ The `data/` directory contains a fragment of the German/English Europarl corpus.
 
 Algorithms writeup
 ==================
+We perform some normalization on the corpus. I set everything to lowercase.
+For each individual digit, I replace it with a "#" sign.
+As an example: 1234 --> ####
+We also truncate each word down to its first 7 characters.
+These normalization techniques managed to bring down our AER a little bit.
+
 I only correctly implemented the IBM Model 1 algorithm. I allow for a variable
 number of EM iterations run on top of an initialization step. Although, I
 believe that I have a minor bug in this implementation as my algorithm does

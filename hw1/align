@@ -12,7 +12,42 @@ optparser.add_option("-n", "--num_sentences", dest="num_sents", default=sys.maxi
 
 # sys.stderr.write("Training with Dice's coefficient...")
 sys.stderr.write("Training with IBM Model 1...")
-bitext = [[sentence.strip().split() for sentence in pair.split(' ||| ')] for pair in open(opts.bitext)][:opts.num_sents]
+
+def make_bitext(unformatted, num_sents):
+    all_lower = True
+    truncate_size = 7
+    # If true, replace every digit with "#"
+    simple_numbers = True
+
+    def replace_digits(word):
+        new_word = ''
+        for c in word:
+            if c.isdigit():
+                c = '#'
+            new_word += c
+        return new_word
+
+    def process_sentence(sentence):
+        if all_lower:
+            sentence = sentence.lower()
+
+        split_up = sentence.strip().split()
+
+        if truncate_size > 0:
+            split_up = [word[:truncate_size] for word in split_up]
+
+        if simple_numbers:
+            split_up = [replace_digits(word) for word in split_up]
+
+        return split_up
+
+    def process_pair(pair):
+        return [process_sentence(sentence) for sentence in pair.split(' ||| ')]
+
+    bitext = [process_pair(pair) for pair in open(opts.bitext)]
+
+    # Truncate the number of sentences we return based on the number we requested
+    return bitext[:opts.num_sents]
 
 def dice(bitext):
     # a mapping from source words to their count
@@ -48,4 +83,5 @@ def dice(bitext):
 
 
 # dice(bitext)
+bitext = make_bitext(opts.bitext, opts.num_sents)
 sys.stdout.write(ibm_model1(bitext, 5))
