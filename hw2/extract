@@ -11,19 +11,20 @@ def extract_features(hyp, ref):
   hwords = hyp.lower().split()
   rwords = ref.lower().split()
   refset = set(rwords)
-  precision = sum(1.0 for word in hwords if word in refset) / len(hwords)
-  return {'prec':precision}
 
-def extract_simple_meteor(hyp, ref):
+  precision = sum(1.0 for word in hwords if word in refset) / len(hwords)
+  meteor = extract_simple_meteor(hwords, rwords)
+  # return {'prec'   : precision,
+  #         'meteor' : meteor}
+  # return {'prec': precision}
+  return {'meteor': meteor}
+
+def extract_simple_meteor(hwords, rwords):
   # The weight of the recall
   # Precision is (1 - alpha)
   alpha = 0.9
-  # The weight of the recall for truncated words
-  # Precision is (1 - alpha_t)
-  alpha_t = 0.9
 
-  hwords = hyp.lower().split()
-  rwords = ref.lower().split()
+
   refset = set(rwords)
 
   # m is the number of unigrams in the candidate translation that are also found
@@ -51,14 +52,14 @@ def extract_simple_meteor(hyp, ref):
 
   F_mean_den = ((alpha * R * P_t * R_t)
                + ((1.0 - alpha) * P * P_t * R_t)
-               + (alpha_t * P * R * R_t)
-               + ((1.0 - alpha_t) * P * R * P_t))
+               + (alpha * P * R * R_t)
+               + ((1.0 - alpha) * P * R * P_t))
   if (F_mean_den != 0.0):
     F_mean = (2.0 * P * R * P_t * R_t) / F_mean_den
   else:
     F_mean = 0
 
-  return {'meteor': F_mean}
+  return F_mean
 
 
 
@@ -74,6 +75,5 @@ sys.stderr.write('Extracting features for (ref,hyp) pairs from %s.\n' % args.pai
 for ref_hyp in open(args.pairs):
   lc += 1
   ref, hyp = ref_hyp.rstrip().split(' ||| ')
-  # fmap = extract_features(hyp, ref)
-  fmap = extract_simple_meteor(hyp, ref)
+  fmap = extract_features(hyp, ref)
   print json.dumps(fmap)   # print evaluation feature map
