@@ -4,12 +4,64 @@ import argparse
 import json
 import os, sys, math
 
+def debug_print(string):
+  sys.stderr.write(string + '\n')
+
 def extract_features(hyp, ref):
   hwords = hyp.lower().split()
   rwords = ref.lower().split()
   refset = set(rwords)
   precision = sum(1.0 for word in hwords if word in refset) / len(hwords)
   return {'prec':precision}
+
+def extract_simple_meteor(hyp, ref):
+  # The weight of the recall
+  # Precision is (1 - alpha)
+  alpha = 0.9
+  # The weight of the recall for truncated words
+  # Precision is (1 - alpha_t)
+  alpha_t = 0.9
+
+  hwords = hyp.lower().split()
+  rwords = ref.lower().split()
+  refset = set(rwords)
+
+  # m is the number of unigrams in the candidate translation that are also found
+  # in the reference translation
+  m = sum(1 for word in hwords if word in refset)
+  # Precision
+  P = float(m) / float(len(hwords))
+  # Recall
+  R = float(m) / float(len(rwords))
+
+
+  # We truncate every word down to the first six characters
+  hwords_trunc = [ word[:6] for word in hwords ]
+  rwords_trunc = [ word[:6] for word in rwords ]
+  refset_trunc = set(rwords_trunc)
+
+  m_t = sum(1 for word in hwords_trunc if word in refset_trunc)
+  P_t = float(m_t) / float(len(hwords_trunc))
+  R_t = float(m_t) / float(len(rwords_trunc))
+
+  # debug_print("P = " + str(P))
+  # debug_print("R = " + str(R))
+  # debug_print("P_t = " + str(P_t))
+  # debug_print("R_t = " + str(R_t) + '\n')
+
+  F_mean_den = ((alpha * R * P_t * R_t)
+               + ((1.0 - alpha) * P * P_t * R_t)
+               + (alpha_t * P * R * R_t)
+               + ((1.0 - alpha_t) * P * R * P_t))
+  if (F_mean_den != 0.0):
+    F_mean = (2.0 * P * R * P_t * R_t) / F_mean_den
+  else:
+    F_mean = 0
+
+  return {'meteor': F_mean}
+
+
+
 
 argparser = argparse.ArgumentParser(prog='extract')
 argparser.add_argument('-x', '--pairs', dest='pairs', default='data/en-cs.pairs', help='Reference-Hypothesis pairs')
@@ -22,6 +74,6 @@ sys.stderr.write('Extracting features for (ref,hyp) pairs from %s.\n' % args.pai
 for ref_hyp in open(args.pairs):
   lc += 1
   ref, hyp = ref_hyp.rstrip().split(' ||| ')
-  fmap = extract_features(hyp, ref)
+  # fmap = extract_features(hyp, ref)
+  fmap = extract_simple_meteor(hyp, ref)
   print json.dumps(fmap)   # print evaluation feature map
-
