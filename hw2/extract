@@ -3,8 +3,10 @@
 import argparse
 import json
 import os, sys, math
+import lcs
 
 def debug_print(string):
+  string = str(string)
   sys.stderr.write(string + '\n')
 
 def extract_features(hyp, ref):
@@ -12,29 +14,64 @@ def extract_features(hyp, ref):
   rwords = ref.lower().split()
   refset = set(rwords)
 
+  num_chunks(hwords, rwords)
+
   meteor = extract_simple_meteor(hwords, rwords)
   return {'meteor': meteor}
 
+
+# Determines the number of fewest possible number of chunks shared between
+# hwords and rwords.
+# A chunk is a sequence of adjacent unigrams.
+# We do this by repeatedly finding the largest shared chunk until there are no
+# more chunks.
+def num_chunks(hwords, rwords):
+  num_chunks = 0
+
+  # We continually find and remove longest common substrings until there are
+  # none left.
+  # For each one that we remove, we increase the number of chunks we've counted.
+  # We only remove from the hwords sequence. This is because each unigram in the
+  # hypothesis can map to at most one unigram in the reference. Thus, once we
+  # have mapped a chunk from the hypothesis, that chunk can no longer map.
+  # However, a chunk in the reference can cover two separate chunks in the
+  # hypothesis.
+  (seq, start, end) = lcs.LCS(hwords, rwords)
+  while seq != []:
+    num_chunks += 1
+    hwords = hwords[:start] + hwords[end:]
+    (seq, start, end) = lcs.LCS(hwords, rwords)
+  return num_chunks
+
+
 def extract_simple_meteor(hwords, rwords):
+  trunc_length = 6
+  full_match_weight = 1.0
+  stem_match_weight = 1.0
+
   # The weight of the recall
   # Precision is (1 - alpha)
   alpha = 0.9
+  beta = 3.0
+  gamma = 0.5
 
   # We truncate every word down to the first six characters
-  hwords_trunc = [ word[:6] for word in hwords ]
-  rwords_trunc = [ word[:6] for word in rwords ]
+  hwords_trunc = [ word[:trunc_length] for word in hwords ]
+  rwords_trunc = [ word[:trunc_length] for word in rwords ]
   refset = set(rwords)
   refset_trunc = set(rwords_trunc)
 
   # m is the number of unigrams in the candidate translation that are also found
   # in the reference translation
-  m = sum(1 for word in hwords if word in refset)
-  m_t = sum(1 for word in hwords_trunc if word in refset_trunc)
+  m = sum(full_match_weight for word in hwords if word in refset)
+  m_t = sum(stem_match_weight for word in hwords_trunc if word in refset_trunc)
 
   # Precision
-  P = float(m + m_t) / float(len(hwords) + len(hwords_trunc))
+  P = float(m + m_t) / float(len(hwords) * full_match_weight
+                             + len(hwords_trunc) * stem_match_weight)
   # Recall
-  R = float(m + m_t) / float(len(rwords) + len(rwords_trunc))
+  R = float(m + m_t) / float(len(rwords) * full_match_weight
+                             + len(rwords_trunc) * stem_match_weight)
 
   F_mean_den = (alpha * P + (1-alpha) * R)
   if (F_mean_den != 0.0):
