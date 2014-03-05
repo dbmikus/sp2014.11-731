@@ -49,13 +49,13 @@ def get_num_chunks(hwords, rwords):
 def extract_simple_meteor(hwords, rwords):
   trunc_length = 6
   full_match_weight = 0.8
-  stem_match_weight = 1.0
+  stem_match_weight = 0.9
 
   # The weight of the recall
   # Precision is (1 - alpha)
   alpha = 0.9
-  beta = 3.0
-  gamma = 0.5
+  beta = 5.0
+  gamma = 0.25
 
   # We truncate every word down to the first six characters
   hwords_trunc = [ word[:trunc_length] for word in hwords ]
