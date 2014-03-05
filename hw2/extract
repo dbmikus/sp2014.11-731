@@ -14,8 +14,6 @@ def extract_features(hyp, ref):
   rwords = ref.lower().split()
   refset = set(rwords)
 
-  num_chunks(hwords, rwords)
-
   meteor = extract_simple_meteor(hwords, rwords)
   return {'meteor': meteor}
 
@@ -25,8 +23,11 @@ def extract_features(hyp, ref):
 # A chunk is a sequence of adjacent unigrams.
 # We do this by repeatedly finding the largest shared chunk until there are no
 # more chunks.
-def num_chunks(hwords, rwords):
+def get_num_chunks(hwords, rwords):
+  # the number of chunks
   num_chunks = 0
+  # the number of unigrams across all chunks
+  num_grams = 0
 
   # We continually find and remove longest common substrings until there are
   # none left.
@@ -39,14 +40,15 @@ def num_chunks(hwords, rwords):
   (seq, start, end) = lcs.LCS(hwords, rwords)
   while seq != []:
     num_chunks += 1
+    num_grams += len(seq)
     hwords = hwords[:start] + hwords[end:]
     (seq, start, end) = lcs.LCS(hwords, rwords)
-  return num_chunks
+  return (num_chunks, num_grams)
 
 
 def extract_simple_meteor(hwords, rwords):
   trunc_length = 6
-  full_match_weight = 1.0
+  full_match_weight = 0.8
   stem_match_weight = 1.0
 
   # The weight of the recall
@@ -79,7 +81,24 @@ def extract_simple_meteor(hwords, rwords):
   else:
     F_mean = 0.0
 
-  return F_mean
+  # Calculating the penalty score based on shared chunks
+  (num_chunks, num_grams) = get_num_chunks(hwords, rwords)
+  (num_chunks_t, num_grams_t) = get_num_chunks(hwords_trunc, rwords_trunc)
+  nc = num_chunks * full_match_weight + num_chunks_t * stem_match_weight
+  ng = num_grams * full_match_weight + num_grams_t * stem_match_weight
+  # I don't know why we subtract one, but that's what it says to do in the
+  # slides
+  # chunk_penalty = float(num_chunks - 1) / float(num_grams - 1)
+  if (ng - 1) == 0:
+    chunk_penalty = 1.0
+  else:
+    chunk_penalty = float(nc - 1) / float(ng - 1)
+
+  # Calculate the discounting factor
+  DF = gamma * (chunk_penalty**beta)
+  score = F_mean * (1 - DF)
+
+  return score
 
 
 
