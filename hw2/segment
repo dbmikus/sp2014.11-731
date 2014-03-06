@@ -1,0 +1,17 @@
+#!/usr/bin/env python
+
+import argparse
+import os, sys
+
+
+argparser = argparse.ArgumentParser(prog='segment')
+argparser.add_argument('-n', '--num-lines', dest=num_lines, default='-1',
+                       help='The number of lines to read in from the input file')
+
+args = argparser.parse_args()
+num_lines = int(num_lines)
+
+lc = 0
+# Open a temporary file to put
+for sentence in sys.stdin:
+    pass
