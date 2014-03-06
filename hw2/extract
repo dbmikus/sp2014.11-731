@@ -4,10 +4,18 @@ import argparse
 import json
 import os, sys, math
 import lcs
+import morfessor
 
 def debug_print(string):
   string = str(string)
   sys.stderr.write(string + '\n')
+
+# We read in a segmentation file so that we can split compound words up into
+# simpler word components
+io = morfessor.MorfessorIO()
+debug_print('Loading in compound segmentation model...')
+compound_model = io.read_any_model('data/.europarl-tmp-segms.segm')
+debug_print('Done loading in compound segmentation model. Extracting features that rank hypotheses.')
 
 def extract_features(hyp, ref):
   hwords = hyp.lower().split()
@@ -46,7 +54,21 @@ def get_num_chunks(hwords, rwords):
   return (num_chunks, num_grams)
 
 
+def split_compounds(word_list):
+  new_word_list = []
+  for word in enumerate(word_list):
+    # compounds = (compound_model.viterbi_segment(word))[0]
+    try:
+      compounds = (compound_model.segment(word))[0]
+      new_word_list.extend(compounds)
+    except KeyError:
+      new_word_list.append(word)
+  return new_word_list
+
 def extract_simple_meteor(hwords, rwords):
+  # hwords = split_compounds(hwords)
+  # rwords = split_compounds(rwords)
+
   trunc_length = 5
   full_match_weight = 0.8
   stem_match_weight = 0.9
@@ -109,10 +131,12 @@ argparser.add_argument('-x', '--pairs', dest='pairs', default='data/en-cs.pairs'
 args = argparser.parse_args()
 
 lc = 0
-sys.stderr.write('Extracting features for (ref,hyp) pairs from %s.\n' % args.pairs)
+sys.stderr.write('Extracting features for (ref,hyp) pairs from %s.' % args.pairs)
 # loop over all (ref,hyp) pairs in the input file and extract evaluation features
 for ref_hyp in open(args.pairs):
   lc += 1
+  if (lc % 500 == 0):
+    sys.stderr.write('.')
   ref, hyp = ref_hyp.rstrip().split(' ||| ')
   fmap = extract_features(hyp, ref)
   print json.dumps(fmap)   # print evaluation feature map
