@@ -47,7 +47,7 @@ def get_num_chunks(hwords, rwords):
 
 
 def extract_simple_meteor(hwords, rwords):
-  trunc_length = 6
+  trunc_length = 5
   full_match_weight = 0.8
   stem_match_weight = 0.9
 
