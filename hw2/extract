@@ -106,7 +106,12 @@ def extract_simple_meteor(hwords, rwords):
 
 # We compute a score based on word vectors
 def extract_vector_score(vf, hwords, rwords):
-  total_score = 0.0
+  pass
+
+def extract_vector_distances(vf, dist_map, rwords):
+  # Go through all of the potential vector matches and split them up into
+  # a dictionary with key = word, and value = distance
+
   # For each word in the reference, we get the vector distance to similar words.
   # We will then check the words in the hypothesis to see if they match any of
   # the words that share a vector distance with the reference word and compute a
@@ -124,24 +129,35 @@ def extract_vector_score(vf, hwords, rwords):
     if vec_res[0][-1] != '-1':
       # These are the actual word distance values
       dist_vals = vec_res[4:-1]
-      # Go through all of the potential vector matches and split them up into
-      # a dictionary with key = word, and value = distance
-      dist_map = defaultdict(float)
       for dist_val in dist_vals:
         word_and_dist = dist_val.split()
-        dist_map[word_and_dist[0]] = float(word_and_dist[1])
-      total_score += vector_match_score(hwords, dist_map)
+        (dist_map[rword])[word_and_dist[0]] = float(word_and_dist[1])
 
-  return total_score
+  return dist_map
 
 
 def vector_match_score(hwords, dist_map):
+  debug_print('Adding all vector distance values to a dictionary.')
   score = 0.0
   for word in hwords:
     score += dist_map[word]
 
   return score
 
+
+def process_vectors(vf, pairs):
+  sys.stderr.write("Adding vector distances to a dictionary")
+  vector_map = defaultdict(lambda: defaultdict(float))
+
+  lc = 0
+  for ref_hyp in open(args.pairs):
+    if (lc % 5) == 0:
+      sys.stderr.write('.')
+    lc += 1
+    ref, hyp = ref_hyp.rstrip().split(' ||| ')
+    rwords = ref.lower().split()
+    vector_map = extract_vector_distances(vf, vector_map, rwords)
+  debug_print('\nDone adding vector distances to the dictionary.')
 
 
 argparser = argparse.ArgumentParser(prog='extract')
@@ -153,6 +169,9 @@ argparser.add_argument('--vector-file', dest='vector_file', required=True,
 args = argparser.parse_args()
 
 lc = 0
+
+process_vectors(args.vector_file, args.pairs)
+
 sys.stderr.write('Extracting features for (ref,hyp) pairs from %s' % args.pairs)
 # loop over all (ref,hyp) pairs in the input file and extract evaluation features
 for ref_hyp in open(args.pairs):
