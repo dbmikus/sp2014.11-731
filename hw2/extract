@@ -4,6 +4,7 @@ import argparse
 import json
 import os, sys, math
 import lcs
+import edit_distance as ed
 
 def debug_print(string):
   string = str(string)
@@ -48,14 +49,14 @@ def get_num_chunks(hwords, rwords):
 
 def extract_simple_meteor(hwords, rwords):
   trunc_length = 5
-  full_match_weight = 0.8
-  stem_match_weight = 0.9
+  full_match_weight = 0.81
+  stem_match_weight = 0.91
 
   # The weight of the recall
   # Precision is (1 - alpha)
-  alpha = 0.9
-  beta = 5.0
-  gamma = 0.25
+  alpha = 0.905
+  beta = 4.0
+  gamma = 0.275
 
   # We truncate every word down to the first six characters
   hwords_trunc = [ word[:trunc_length] for word in hwords ]
@@ -99,8 +100,6 @@ def extract_simple_meteor(hwords, rwords):
   score = F_mean * (1 - DF)
 
   return score
-
-
 
 
 argparser = argparse.ArgumentParser(prog='extract')
