@@ -1,20 +1,23 @@
 #!/usr/bin/env python
 
+from collections import defaultdict
 import argparse
 import json
 import os, sys, math
 import lcs
+import subprocess
 
 def debug_print(string):
   string = str(string)
   sys.stderr.write(string + '\n')
 
-def extract_features(hyp, ref):
+def extract_features(vf, hyp, ref):
   hwords = hyp.lower().split()
   rwords = ref.lower().split()
   refset = set(rwords)
 
   meteor = extract_simple_meteor(hwords, rwords)
+  # vector_score = extract_vector_score(vf, hwords, rwords)
   return {'meteor': meteor}
 
 
@@ -101,18 +104,61 @@ def extract_simple_meteor(hwords, rwords):
   return score
 
 
+# We compute a score based on word vectors
+def extract_vector_score(vf, hwords, rwords):
+  total_score = 0.0
+  # For each word in the reference, we get the vector distance to similar words.
+  # We will then check the words in the hypothesis to see if they match any of
+  # the words that share a vector distance with the reference word and compute a
+  # score value based on that.
+  for rword in rwords:
+    # We get the vector distances for the current reference word
+    dist_proc = subprocess.Popen(['distance', vf],
+                                 stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
+    vec_res = dist_proc.communicate(input=rword + '\nEXIT\n')[0].split('\n')[1:]
+    vec_res[0] = vec_res[0].split()
+
+    # Checks if the word was found in our vector distance search
+    if vec_res[0][-1] != '-1':
+      # These are the actual word distance values
+      dist_vals = vec_res[4:-1]
+      # Go through all of the potential vector matches and split them up into
+      # a dictionary with key = word, and value = distance
+      dist_map = defaultdict(float)
+      for dist_val in dist_vals:
+        word_and_dist = dist_val.split()
+        dist_map[word_and_dist[0]] = float(word_and_dist[1])
+      total_score += vector_match_score(hwords, dist_map)
+
+  return total_score
+
+
+def vector_match_score(hwords, dist_map):
+  score = 0.0
+  for word in hwords:
+    score += dist_map[word]
+
+  return score
+
 
 
 argparser = argparse.ArgumentParser(prog='extract')
-argparser.add_argument('-x', '--pairs', dest='pairs', default='data/en-cs.pairs', help='Reference-Hypothesis pairs')
+argparser.add_argument('-x', '--pairs', dest='pairs', default='data/en-cs.pairs',
+                       help='Reference-Hypothesis pairs')
+argparser.add_argument('--vector-file', dest='vector_file', required=True,
+                       help='The file that contains word vectors')
 
 args = argparser.parse_args()
 
 lc = 0
-sys.stderr.write('Extracting features for (ref,hyp) pairs from %s.\n' % args.pairs)
+sys.stderr.write('Extracting features for (ref,hyp) pairs from %s' % args.pairs)
 # loop over all (ref,hyp) pairs in the input file and extract evaluation features
 for ref_hyp in open(args.pairs):
+  if (lc % 500) == 0:
+    sys.stderr.write('.')
   lc += 1
   ref, hyp = ref_hyp.rstrip().split(' ||| ')
-  fmap = extract_features(hyp, ref)
+  fmap = extract_features(args.vector_file, hyp, ref)
   print json.dumps(fmap)   # print evaluation feature map
