@@ -1,0 +1,39 @@
+#!/usr/bin/env python
+
+import argparse
+import os, sys
+import subprocess
+
+
+argparser = argparse.ArgumentParser(prog='train-vec')
+argparser.add_argument('-t', '--train', dest='train_file', default='./data/europarl-v7.cs',
+                       help='The input training file')
+argparser.add_argument('-o', '--output', dest='out_file', default='./data/.vectors.bin',
+                       help='The output word vectors / clusters file')
+argparser.add_argument('-n', '--num-lines', dest='num_lines', default='0',
+                       help='The number of lines to read in from the input file')
+
+args = argparser.parse_args()
+num_lines = int(args.num_lines)
+
+if num_lines != 0:
+    trunc_file = args.train_file + '.trunc'
+    f_in = open(args.train_file, 'r')
+    f_out = open(trunc_file, 'w')
+
+    i = 0
+    while i < num_lines:
+        line = f_in.readline()
+        f_out.write(line)
+        i += 1
+
+    f_in.close()
+    f_out.close()
+    train_file = trunc_file
+else:
+    train_file = args.train_file
+
+
+print train_file
+subprocess.call(['word2vec', '-train', train_file, '-output', args.out_file,
+                 '-sample', '1e-3', '-threads', '12', '-binary', '1'])
