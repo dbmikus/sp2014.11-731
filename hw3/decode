@@ -5,59 +5,146 @@ import models
 import heapq
 from collections import namedtuple
 
-parser = argparse.ArgumentParser(description='Simple phrase based decoder.')
-parser.add_argument('-i', '--input', dest='input', default='data/input', help='File containing sentences to translate (default=data/input)')
-parser.add_argument('-t', '--translation-model', dest='tm', default='data/tm', help='File containing translation model (default=data/tm)')
-parser.add_argument('-s', '--stack-size', dest='s', default=1, type=int, help='Maximum stack size (default=1)')
-parser.add_argument('-n', '--num_sentences', dest='num_sents', default=sys.maxint, type=int, help='Number of sentences to decode (default=no limit)')
-parser.add_argument('-l', '--language-model', dest='lm', default='data/lm', help='File containing ARPA-format language model (default=data/lm)')
-parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False,  help='Verbose mode (default=off)')
-opts = parser.parse_args()
 
-tm = models.TM(opts.tm, sys.maxint)
-lm = models.LM(opts.lm)
-sys.stderr.write('Decoding %s...\n' % (opts.input,))
-input_sents = [tuple(line.strip().split()) for line in open(opts.input).readlines()[:opts.num_sents]]
+def main():
+    parser = argparse.ArgumentParser(description='Simple phrase based decoder.')
+    parser.add_argument('-i', '--input', dest='input', default='data/input', help='File containing sentences to translate (default=data/input)')
+    parser.add_argument('-t', '--translation-model', dest='tm', default='data/tm', help='File containing translation model (default=data/tm)')
+    parser.add_argument('-s', '--stack-size', dest='s', default=1, type=int, help='Maximum stack size (default=1)')
+    parser.add_argument('-n', '--num_sentences', dest='num_sents', default=sys.maxint, type=int, help='Number of sentences to decode (default=no limit)')
+    parser.add_argument('-l', '--language-model', dest='lm', default='data/lm', help='File containing ARPA-format language model (default=data/lm)')
+    parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False,  help='Verbose mode (default=off)')
+    opts = parser.parse_args()
 
-hypothesis = namedtuple('hypothesis', 'logprob, lm_state, predecessor, phrase')
-for f in input_sents:
-    # The following code implements a DP monotone decoding
-    # algorithm (one that doesn't permute the target phrases).
-    # Hence all hypotheses in stacks[i] represent translations of 
-    # the first i words of the input sentence.
-    # HINT: Generalize this so that stacks[i] contains translations
-    # of any i words (remember to keep track of which words those
-    # are, and to estimate future costs)
-    initial_hypothesis = hypothesis(0.0, lm.begin(), None, None)
+    tm = models.TM(opts.tm, sys.maxint)
+    lm = models.LM(opts.lm)
+    sys.stderr.write('Decoding %s...\n' % (opts.input,))
+    input_sents = [tuple(line.strip().split()) for line in open(opts.input).readlines()[:opts.num_sents]]
 
-    stacks = [{} for _ in f] + [{}]
-    stacks[0][lm.begin()] = initial_hypothesis
-    for i, stack in enumerate(stacks[:-1]):
-        # extend the top s hypotheses in the current stack
-        for h in heapq.nlargest(opts.s, stack.itervalues(), key=lambda h: h.logprob): # prune
-            for j in xrange(i+1,len(f)+1):
-                if f[i:j] in tm:
-                    for phrase in tm[f[i:j]]:
-                        logprob = h.logprob + phrase.logprob
-                        lm_state = h.lm_state
-                        for word in phrase.english.split():
-                            (lm_state, word_logprob) = lm.score(lm_state, word)
-                            logprob += word_logprob
-                        logprob += lm.end(lm_state) if j == len(f) else 0.0
-                        new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
-                        if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
-                            stacks[j][lm_state] = new_hypothesis 
+    # A hypothesis tuple object.
+    #   logprob: the current probability of the hypothesis in log space
+    #   logfuture: the estimated future cost of the rest of the translation in
+    #              log space
+    #   lm_state: the language model state, necessary to interact with LM class
+    #   trans_array: a boolean array indicating which words have been translated
+    #   predecessor: the previous hypothesis we had, which is used to
+    #                reconstruct phrase sequence as a string
+    #   ps: the index of the starting word of the phrase
+    #   pe: the index of the ending word of the phrase
+    #   phrase: the string phrase that we are adding in this hypothesis
+    hypothesis = namedtuple('hypothesis',
+                            'logprob, logfuture, lm_state, trans_array, predecessor, ps, pe, phrase')
+    for f in input_sents:
+        trans_array = []
 
-    # find best translation by looking at the best scoring hypothesis
-    # on the last stack
-    winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
-    def extract_english_recursive(h):
-        return '' if h.predecessor is None else '%s%s ' % (extract_english_recursive(h.predecessor), h.phrase.english)
-    print extract_english_recursive(winner)
+        # The following code implements a DP monotone decoding
+        # algorithm (one that doesn't permute the target phrases).
+        # Hence all hypotheses in stacks[i] represent translations of
+        # the first i words of the input sentence.
+        # HINT: Generalize this so that stacks[i] contains translations
+        # of any i words (remember to keep track of which words those
+        # are, and to estimate future costs)
+        initial_hypothesis = hypothesis(0.0, "future", lm.begin(),
+                                        None, None,
+                                        None, None, None)
 
-    if opts.verbose:
-        def extract_tm_logprob(h):
-            return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
-        tm_logprob = extract_tm_logprob(winner)
-        sys.stderr.write('LM = %f, TM = %f, Total = %f\n' % 
-            (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
+        stacks = [{} for _ in f] + [{}]
+        stacks[0][lm.begin()] = initial_hypothesis
+        # iterate over every stack except for the last one, since the last stack has
+        # the fully decoded sentences, and thus we cannot do any more work on it
+        for i, stack in enumerate(stacks[:-1]):
+            # extend the top s hypotheses in the current stack
+            for h in heapq.nlargest(opts.s, stack.itervalues(), key=lambda h: h.logprob): # prune
+                # TODO must change to use trans_array
+                for j in xrange(i+1,len(f)+1):
+                    # TODO use results from trans_array
+                    if f[i:j] in tm:
+                        for phrase in tm[f[i:j]]:
+                            logprob = h.logprob + phrase.logprob
+                            lm_state = h.lm_state
+                            for word in phrase.english.split():
+                                (lm_state, word_logprob) = lm.score(lm_state, word)
+                                logprob += word_logprob
+                            logprob += lm.end(lm_state) if j == len(f) else 0.0
+                            new_hypothesis = hypothesis(logprob, lm_state, h, phrase)
+                            if lm_state not in stacks[j] or stacks[j][lm_state].logprob < logprob: # second case is recombination
+                                stacks[j][lm_state] = new_hypothesis
+
+        # find best translation by looking at the best scoring hypothesis
+        # on the last stack
+        winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
+        def extract_english_recursive(h):
+            return '' if h.predecessor is None else '%s%s ' % (extract_english_recursive(h.predecessor), h.phrase.english)
+        print extract_english_recursive(winner)
+
+        if opts.verbose:
+            def extract_tm_logprob(h):
+                return 0.0 if h.predecessor is None else h.phrase.logprob + extract_tm_logprob(h.predecessor)
+            tm_logprob = extract_tm_logprob(winner)
+            sys.stderr.write('LM = %f, TM = %f, Total = %f\n' %
+                (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
+
+
+# f: the foreign source sentence we are trying to find phrases in
+# tm: the translation model that contains possible translation phrases from
+#     source phrase
+# trans_array: which words in the source have been translated already
+# prev_start: the start index of the previous phrase that we translated
+# prev_end: the end index of the previous phrase that we translated.
+#
+# If prev_start and prev_end are None (because we don't yet have a previous
+# hypothesis), then we just make sure that the distance from the start of the
+# sentence is not too great.
+def source_phrase_options(f, tm, trans_array, prev_start, prev_end):
+    dist_limit = 4
+
+    if prev_start is None:
+        # The earliest index that our phrase can start at
+        i = 0
+        # The latest index that our phrase can start at
+        j = dist_limit - 1
+    else:
+        # The earliest index that our phrase can start at
+        i = max(0, prev_end + 1 - dist_limit)
+        # The latest index that our phrase can start at
+        j = min(prev_end + 1 + dist_limit, len(f)-1)
+
+    vrs = valid_ranges(trans_array, i, j)
+
+    # A list of tuples, where each element is a possible phrase.
+    # Each tuple has: (phrase_start, phrase_end, phrase)
+    phrase_opts = []
+
+    for (s, e) in vrs:
+        phrase_opts.append(s, e, f[s:e+1])
+    return phrase_opts
+
+
+
+# Gets all valid ranges of phrases, restricting the start of the phrase to not
+# go past the start and end indices, and also to not including any previously
+# translated words. start and end are inclusive indices.
+def valid_ranges(trans_array, start, end):
+    valid_ranges = []
+
+    vr_start = None
+    vr_end = None
+    for i in xrange(start, end+1):
+        # the i'th word is not yet translated
+        if not trans_array[i]:
+            for j in xrange(i, len(trans_array)):
+                if not trans_array[j]:
+                    valid_ranges.append((i, j))
+                # If we hit an already translated word, it cannot be part of a
+                # phrase, so we must break out from finding any longer phrase
+                # end points given our current start index
+                else:
+                    break
+        # We don't need any else statement here. If the i'th index is already
+        # translated, we simply don't do anything and skip to the next part
+
+    return valid_ranges
+
+
+if (__name__ == "__main__"):
+    main()
