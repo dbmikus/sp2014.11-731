@@ -89,11 +89,6 @@ def main():
                             # calculate future cost probability
                             logprob += future_prob(f, trans_array, future_table)
 
-                            # NOTE commented out for cleaner printing
-                            print str(e-s + 1)
-                            print str(nt) + ", " + str(len(new_trans))
-                            print new_trans
-                            print ""
                             if nt == len(new_trans):
                                 logprob += lm.end(lm_state)
                             new_hypothesis = hypothesis(logprob, h.logfuture, lm_state,
@@ -103,9 +98,6 @@ def main():
 
         # find best translation by looking at the best scoring hypothesis
         # on the last stack
-        print "--------------------"
-        print stacks[-1]
-        print "--------------------"
         winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
         def extract_english_recursive(h):
             return '' if h.predecessor is None else '%s%s ' % (extract_english_recursive(h.predecessor), h.phrase.english)
@@ -235,6 +227,15 @@ def tm_lm_prob(tm, lm, src_phrase):
 def source_phrase_options(f, tm, trans_array, prev_start, prev_end):
     dist_limit = 6
 
+    i = 0
+    earliest_trans = None
+    while i < len(trans_array) and trans_array[i]:
+        i += 1
+    # Either everything is translated and we went over the whole list or we
+    # found the first untranslated word / start of a phrase
+    if i < len(trans_array):
+        earliest_trans = i
+
     if prev_start is None:
         # The earliest index that our phrase can start at
         i = 0
@@ -253,7 +254,10 @@ def source_phrase_options(f, tm, trans_array, prev_start, prev_end):
     phrase_opts = []
 
     for (s, e) in vrs:
-        phrase_opts.append((s, e, f[s:e+1]))
+        # We only allow phrases that will not push us far enough away that we
+        # can never back track to the earliest untranslated phrase.
+        if (e + 1 - earliest_trans) <= dist_limit:
+            phrase_opts.append((s, e, f[s:e+1]))
     return phrase_opts
 
 
