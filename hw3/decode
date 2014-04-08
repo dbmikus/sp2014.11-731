@@ -3,6 +3,7 @@ import argparse
 import sys
 import models
 import heapq
+import math
 from collections import namedtuple
 
 
@@ -35,10 +36,12 @@ def main():
     hypothesis = namedtuple('hypothesis',
                             'logprob, logfuture, lm_state, trans_array, predecessor, src_ps, src_pe, phrase')
     for f in input_sents:
-        print "\n"
         trans_array = []
         for i in xrange(0, len(f)):
             trans_array.append(False)
+
+        future_table = compute_future_table(tm, lm, f)
+
 
         # The following code implements a DP monotone decoding
         # algorithm (one that doesn't permute the target phrases).
@@ -48,7 +51,7 @@ def main():
         # of any i words (remember to keep track of which words those
         # are, and to estimate future costs)
         initial_hypothesis = hypothesis(0.0, 0.0, lm.begin(),
-                                        None, None,
+                                        trans_array, None,
                                         None, None, None)
 
         stacks = [{} for _ in f] + [{}]
@@ -58,6 +61,7 @@ def main():
         for i, stack in enumerate(stacks[:-1]):
             # extend the top s hypotheses in the current stack
             for h in heapq.nlargest(opts.s, stack.itervalues(), key=lambda h: h.logprob): # prune
+                trans_array = h.trans_array
                 prev_start = h.src_ps
                 prev_end = h.src_pe
                 src_phrases = source_phrase_options(f, tm, trans_array, prev_start, prev_end)
@@ -65,15 +69,33 @@ def main():
                 for (s, e, src_phrase) in src_phrases:
                     if src_phrase in tm:
                         for tgt_phrase in tm[src_phrase]:
-                            # TODO how do we estimate future cost?
+                            # translation model cost: phi(f_i | e_i)
                             logprob = h.logprob + tgt_phrase.logprob
                             lm_state = h.lm_state
+                            # language model cost: p_{LM}(e)
                             for word in tgt_phrase.english.split():
                                 (lm_state, word_logprob) = lm.score(lm_state, word)
                                 logprob += word_logprob
-                            nt = num_trans(trans_array)
-                            logprob += lm.end(lm_state) if nt == len(trans_array) else 0.0
+                            # reordering cost
+                            if prev_start is None:
+                                prev_start = 0
+                            alpha = math.log(0.25)
+                            logprob += abs(float(s) - float(prev_start) - 1.0) * alpha
+
+                            # update our coverage vector
                             new_trans = update_trans(trans_array, s, e)
+                            nt = num_trans(new_trans)
+
+                            # calculate future cost probability
+                            logprob += future_prob(f, trans_array, future_table)
+
+                            # NOTE commented out for cleaner printing
+                            print str(e-s + 1)
+                            print str(nt) + ", " + str(len(new_trans))
+                            print new_trans
+                            print ""
+                            if nt == len(new_trans):
+                                logprob += lm.end(lm_state)
                             new_hypothesis = hypothesis(logprob, h.logfuture, lm_state,
                                                         new_trans, h, s, e, tgt_phrase)
                             if lm_state not in stacks[nt] or stacks[nt][lm_state].logprob < logprob: # second case is recombination
@@ -81,6 +103,9 @@ def main():
 
         # find best translation by looking at the best scoring hypothesis
         # on the last stack
+        print "--------------------"
+        print stacks[-1]
+        print "--------------------"
         winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
         def extract_english_recursive(h):
             return '' if h.predecessor is None else '%s%s ' % (extract_english_recursive(h.predecessor), h.phrase.english)
@@ -112,6 +137,91 @@ def num_trans(trans_array):
     return i
 
 
+# Given a precomputed future cost table, we calculate the future probability
+# cost based on phrases for all of the untranslated words in sentence f.
+def future_prob(f, trans_array, cost_table):
+    total_prob = 0.0
+
+    sub_start = 0
+    sub_end = None
+
+    # Each iteration of this loop of this loop calculates the maximal
+    # probability combination for decoding a given phrase
+    while sub_start < len(f):
+        # Fast-track the substring start until we hit an untranslated word
+        while sub_start < len(f) and trans_array[sub_start]:
+            sub_start += 1
+
+        # At this point, sub_start has either passed the end of the string or it
+        # points to an untranslated word. We can only proceed to find a phrase
+        # if we are still within the string.
+        if sub_start < len(f):
+            # At this point, sub_start points to an untranslated word
+            if sub_end is None:
+                sub_end = sub_start+1
+            while sub_end < len(f) and not trans_array[sub_end]:
+                sub_end += 1
+
+            # At this point, sub_end has either hit the end of the string or
+            # found the first translated word after sub_start. We can now take
+            # this phrase, bookended by sub_start and sub_end, and calculate its
+            # probability.
+            # cost_table[x][y] = cost for phrase f[x:x+y+1]
+            # ==> cost for phrase f[x:y] = cost_table[x][y - x - 1]
+            total_prob += cost_table[sub_start][sub_end - sub_start - 1]
+            # update and reset our start and end word indices
+            sub_start = sub_end
+            sub_end = None
+
+    return total_prob
+
+
+# Computes a future cost table that takes into account the translation model
+# and the language model, but not any reordering cost.
+# The table that we return is not an actual rectangle. It follows the format:
+#   - there are len(f) rows
+#   - for row i, there len(f) - i columns
+#   - row[i], col[j] represents the maximum probability to decode the phrase
+#     f[i:i+j+1]
+# Note that the i and j values used below are different than the i and j values
+# referenced in the comments. That is, i and j are indexed from 0 when we
+# interact with the future table. j is not indexed from i.
+def compute_future_table(tm, lm, f):
+    future_table = [None] * len(f)
+    for i in xrange(0, len(f)):
+        part_table = []
+        for j in xrange(i, len(f)):
+            src_phrase = f[i:j+1]
+            temp_prob = tm_lm_prob(tm, lm, src_phrase)
+            if (j > i):
+                trans_prob = max(part_table[j-i-1], temp_prob)
+            else:
+                trans_prob = temp_prob
+            part_table.append(trans_prob)
+        future_table[i] = part_table
+    return future_table
+
+
+# Computes the maximal probability of decoding a source phrase given the
+# translation model and language model.
+def tm_lm_prob(tm, lm, src_phrase):
+    if src_phrase in tm:
+        max_logprob = float("-inf")
+        for tgt_phrase in tm[src_phrase]:
+            logprob = tgt_phrase.logprob
+            lm_state = lm.begin()
+            for word in tgt_phrase.english.split():
+                (lm_state, word_logprob) = lm.score(lm_state, word)
+                logprob += word_logprob
+            logprob += lm.end(lm_state)
+            if (logprob > max_logprob):
+                max_logprob = logprob
+        return max_logprob
+    # source phrase does not exist in our translation model
+    else:
+        return float("-inf")
+
+
 # f: the foreign source sentence we are trying to find phrases in
 # tm: the translation model that contains possible translation phrases from
 #     source phrase
@@ -123,7 +233,7 @@ def num_trans(trans_array):
 # hypothesis), then we just make sure that the distance from the start of the
 # sentence is not too great.
 def source_phrase_options(f, tm, trans_array, prev_start, prev_end):
-    dist_limit = 5
+    dist_limit = 6
 
     if prev_start is None:
         # The earliest index that our phrase can start at
