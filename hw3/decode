@@ -72,6 +72,11 @@ def main():
         # the fully decoded sentences, and thus we cannot do any more work on it
         for i, stack in enumerate(stacks[:-1]):
             # extend the top s hypotheses in the current stack
+            # For some reasOn, if we define our key function to be:
+            #   key = lambda h: h.logprob + h.logfuture
+            # we get worse results. I am pretty sure that my computation of
+            # future probability is right, so I don't really know what is going
+            # on.
             for h in heapq.nlargest(opts.s, stack, key=lambda h: h.logprob): # prune
                 trans_array = h.trans_array
                 prev_start = h.src_ps
@@ -101,9 +106,7 @@ def main():
                             nt = num_trans(new_trans)
 
                             # calculate future cost probability
-                            futureprob = future_prob(f, trans_array, future_table)
-                            if (futureprob == float("-inf")):
-                                futureprob = 0.0
+                            futureprob = future_prob(f, new_trans, future_table)
 
                             if nt == len(new_trans):
                                 logprob += lm.end(lm_state)
@@ -179,7 +182,6 @@ def future_prob(f, trans_array, cost_table):
     total_prob = 0.0
 
     sub_start = 0
-    sub_end = None
 
     # Each iteration of this loop of this loop calculates the maximal
     # probability combination for decoding a given phrase
@@ -193,8 +195,7 @@ def future_prob(f, trans_array, cost_table):
         # if we are still within the string.
         if sub_start < len(f):
             # At this point, sub_start points to an untranslated word
-            if sub_end is None:
-                sub_end = sub_start+1
+            sub_end = sub_start+1
             while sub_end < len(f) and not trans_array[sub_end]:
                 sub_end += 1
 
@@ -207,7 +208,6 @@ def future_prob(f, trans_array, cost_table):
             total_prob += cost_table[sub_start][sub_end - sub_start - 1]
             # update and reset our start and end word indices
             sub_start = sub_end
-            sub_end = None
 
     return total_prob
 
