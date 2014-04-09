@@ -22,6 +22,12 @@ def setup_parser():
 def extract_english_recursive(h):
     return '' if h.predecessor is None else '%s%s ' % (extract_english_recursive(h.predecessor), h.phrase.english)
 
+def print_stack(stack):
+    for hyp in stack:
+        print ""
+        print hyp
+        print ""
+
 def main():
     opts = setup_parser()
 
@@ -43,7 +49,9 @@ def main():
     #   phrase: the target phrase that we are adding in this hypothesis
     hypothesis = namedtuple('hypothesis',
                             'logprob, logfuture, lm_state, trans_array, predecessor, src_ps, src_pe, phrase')
+
     for f in input_sents:
+        phrases_not_found = {}
         trans_array = [False] * len(f)
 
         future_table = compute_future_table(tm, lm, f)
@@ -59,13 +67,13 @@ def main():
                                         trans_array, None,
                                         None, None, None)
 
-        stacks = [{} for _ in f] + [{}]
-        stacks[0][lm.begin()] = initial_hypothesis
+        stacks = [[] for _ in f] + [[]]
+        stacks[0].append(initial_hypothesis)
         # iterate over every stack except for the last one, since the last stack has
         # the fully decoded sentences, and thus we cannot do any more work on it
         for i, stack in enumerate(stacks[:-1]):
             # extend the top s hypotheses in the current stack
-            for h in heapq.nlargest(opts.s, stack.itervalues(), key=lambda h: h.logprob): # prune
+            for h in heapq.nlargest(opts.s, stack, key=lambda h: h.logprob): # prune
                 trans_array = h.trans_array
                 prev_start = h.src_ps
                 prev_end = h.src_pe
@@ -93,29 +101,24 @@ def main():
                             new_trans = update_trans(trans_array, s, e)
                             nt = num_trans(new_trans)
 
-                            # print new_trans
-
                             # calculate future cost probability
                             futureprob = future_prob(f, trans_array, future_table)
+                            if (futureprob == float("-inf")):
+                                futureprob = 0.0
 
                             if nt == len(new_trans):
                                 logprob += lm.end(lm_state)
                             new_hypothesis = hypothesis(logprob, futureprob, lm_state,
                                                         new_trans, h, s, e, tgt_phrase)
-                            if lm_state not in stacks[nt]:
-                                stacks[nt][lm_state] = new_hypothesis
-                            # Seeing if we do a recombination
-                            else:
-                                old_hyp = stacks[nt][lm_state]
-                                old_score = old_hyp.logprob + old_hyp.logfuture
-                                new_score = logprob + futureprob
-                                if (hyp_eq_no_alpha(old_hyp, new_hypothesis)
-                                    and old_score < new_score):
-                                    stacks[nt][lm_state] = new_hypothesis
+                            # Adding the hypothesis to the stack if there is not
+                            # another equal hypothesis with a better score
+                            stacks[nt] = update_stack(stacks[nt], new_hypothesis)
+                    elif len(src_phrase) == 1:
+                        phrases_not_found[src_phrase[0]] = src_phrase[0]
 
         # find best translation by looking at the best scoring hypothesis
-        # on the last stack
-        winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
+        # on the last stack.
+        winner = max(stacks[-1], key=lambda h: h.logprob)
         print extract_english_recursive(winner)
 
         if opts.verbose:
@@ -125,6 +128,23 @@ def main():
             sys.stderr.write('LM = %f, TM = %f, Total = %f\n' %
                 (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
 
+
+# Adds the hypothesis to the stack
+def update_stack(stack, hyp):
+    for i in xrange(0, len(stack)):
+        other_hyp = stack[i]
+        if hyp_eq_no_alpha(hyp, other_hyp):
+            other_score = other_hyp.logprob + other_hyp.logfuture
+            new_score = hyp.logprob + hyp.logfuture
+            if (other_score < new_score):
+                # recombination
+                stack[i] = hyp
+            # We found the equal stack and we either updated its score or there
+            # is nothing to change in the stack
+            return stack
+    # We have not found any equal hypothesis, so we add our current one
+    stack.append(hyp)
+    return stack
 
 # Tests for equality of hypotheses. Specifically,
 #   1) do the words in the ngram model match
@@ -252,7 +272,7 @@ def tm_lm_prob(tm, lm, src_phrase):
 # hypothesis), then we just make sure that the distance from the start of the
 # sentence is not too great.
 def source_phrase_options(f, trans_array, prev_start, prev_end):
-    dist_limit = 5
+    dist_limit = 4
 
     i = 0
     earliest_trans = None
@@ -274,9 +294,6 @@ def source_phrase_options(f, trans_array, prev_start, prev_end):
         # The latest index that our phrase can start at
         j = min(prev_end + 1 + dist_limit, len(f)-1)
 
-    # print "(prev_start = " + str(prev_start) + ", prev_end = " + str(prev_end) + ")"
-    # print "(i = " + str(i) + ", j = " + str(j) + ")"
-    # print ""
     vrs = valid_ranges(trans_array, i, j)
 
     # A list of tuples, where each element is a possible phrase.
