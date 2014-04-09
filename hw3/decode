@@ -7,7 +7,7 @@ import math
 from collections import namedtuple
 
 
-def main():
+def setup_parser():
     parser = argparse.ArgumentParser(description='Simple phrase based decoder.')
     parser.add_argument('-i', '--input', dest='input', default='data/input', help='File containing sentences to translate (default=data/input)')
     parser.add_argument('-t', '--translation-model', dest='tm', default='data/tm', help='File containing translation model (default=data/tm)')
@@ -16,6 +16,14 @@ def main():
     parser.add_argument('-l', '--language-model', dest='lm', default='data/lm', help='File containing ARPA-format language model (default=data/lm)')
     parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False,  help='Verbose mode (default=off)')
     opts = parser.parse_args()
+    return opts
+
+
+def extract_english_recursive(h):
+    return '' if h.predecessor is None else '%s%s ' % (extract_english_recursive(h.predecessor), h.phrase.english)
+
+def main():
+    opts = setup_parser()
 
     tm = models.TM(opts.tm, sys.maxint)
     lm = models.LM(opts.lm)
@@ -36,12 +44,9 @@ def main():
     hypothesis = namedtuple('hypothesis',
                             'logprob, logfuture, lm_state, trans_array, predecessor, src_ps, src_pe, phrase')
     for f in input_sents:
-        trans_array = []
-        for i in xrange(0, len(f)):
-            trans_array.append(False)
+        trans_array = [False] * len(f)
 
         future_table = compute_future_table(tm, lm, f)
-
 
         # The following code implements a DP monotone decoding
         # algorithm (one that doesn't permute the target phrases).
@@ -64,7 +69,7 @@ def main():
                 trans_array = h.trans_array
                 prev_start = h.src_ps
                 prev_end = h.src_pe
-                src_phrases = source_phrase_options(f, tm, trans_array, prev_start, prev_end)
+                src_phrases = source_phrase_options(f, trans_array, prev_start, prev_end)
 
                 for (s, e, src_phrase) in src_phrases:
                     if src_phrase in tm:
@@ -78,29 +83,39 @@ def main():
                                 logprob += word_logprob
                             # reordering cost
                             if prev_start is None:
-                                prev_start = 0
+                                prev_start = -1
+                            if prev_end is None:
+                                prev_end = -1
                             alpha = math.log(0.25)
-                            logprob += abs(float(s) - float(prev_start) - 1.0) * alpha
+                            logprob += abs(float(prev_end) + 1.0 - float(s)) * alpha
 
                             # update our coverage vector
                             new_trans = update_trans(trans_array, s, e)
                             nt = num_trans(new_trans)
 
+                            # print new_trans
+
                             # calculate future cost probability
-                            logprob += future_prob(f, trans_array, future_table)
+                            futureprob = future_prob(f, trans_array, future_table)
 
                             if nt == len(new_trans):
                                 logprob += lm.end(lm_state)
-                            new_hypothesis = hypothesis(logprob, h.logfuture, lm_state,
+                            new_hypothesis = hypothesis(logprob, futureprob, lm_state,
                                                         new_trans, h, s, e, tgt_phrase)
-                            if lm_state not in stacks[nt] or stacks[nt][lm_state].logprob < logprob: # second case is recombination
+                            if lm_state not in stacks[nt]:
                                 stacks[nt][lm_state] = new_hypothesis
+                            # Seeing if we do a recombination
+                            else:
+                                old_hyp = stacks[nt][lm_state]
+                                old_score = old_hyp.logprob + old_hyp.logfuture
+                                new_score = logprob + futureprob
+                                if (hyp_eq_no_alpha(old_hyp, new_hypothesis)
+                                    and old_score < new_score):
+                                    stacks[nt][lm_state] = new_hypothesis
 
         # find best translation by looking at the best scoring hypothesis
         # on the last stack
         winner = max(stacks[-1].itervalues(), key=lambda h: h.logprob)
-        def extract_english_recursive(h):
-            return '' if h.predecessor is None else '%s%s ' % (extract_english_recursive(h.predecessor), h.phrase.english)
         print extract_english_recursive(winner)
 
         if opts.verbose:
@@ -109,6 +124,18 @@ def main():
             tm_logprob = extract_tm_logprob(winner)
             sys.stderr.write('LM = %f, TM = %f, Total = %f\n' %
                 (winner.logprob - tm_logprob, tm_logprob, winner.logprob))
+
+
+# Tests for equality of hypotheses. Specifically,
+#   1) do the words in the ngram model match
+#   2) conversion vectors are equal
+#   3) end of last translated phrases are equal
+def hyp_eq_no_alpha(h1, h2):
+    lm_model_eq = h1.lm_state == h2.lm_state
+    conv_vec_eq = h1.trans_array == h2.trans_array
+    prev_end_eq = h1.src_pe == h2.src_pe
+
+    return (lm_model_eq and conv_vec_eq and prev_end_eq)
 
 
 def update_trans(trans_array, start, end):
@@ -224,8 +251,8 @@ def tm_lm_prob(tm, lm, src_phrase):
 # If prev_start and prev_end are None (because we don't yet have a previous
 # hypothesis), then we just make sure that the distance from the start of the
 # sentence is not too great.
-def source_phrase_options(f, tm, trans_array, prev_start, prev_end):
-    dist_limit = 6
+def source_phrase_options(f, trans_array, prev_start, prev_end):
+    dist_limit = 5
 
     i = 0
     earliest_trans = None
@@ -236,7 +263,7 @@ def source_phrase_options(f, tm, trans_array, prev_start, prev_end):
     if i < len(trans_array):
         earliest_trans = i
 
-    if prev_start is None:
+    if prev_end is None:
         # The earliest index that our phrase can start at
         i = 0
         # The latest index that our phrase can start at
@@ -247,6 +274,9 @@ def source_phrase_options(f, tm, trans_array, prev_start, prev_end):
         # The latest index that our phrase can start at
         j = min(prev_end + 1 + dist_limit, len(f)-1)
 
+    # print "(prev_start = " + str(prev_start) + ", prev_end = " + str(prev_end) + ")"
+    # print "(i = " + str(i) + ", j = " + str(j) + ")"
+    # print ""
     vrs = valid_ranges(trans_array, i, j)
 
     # A list of tuples, where each element is a possible phrase.
