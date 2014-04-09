@@ -54,9 +54,6 @@ def main():
         trans_array = [False] * len(f)
 
         future_table = compute_future_table(tm, lm, f)
-        # for row in future_table:
-        #     print row
-        # print "\n"
 
         # The following code implements an decoding algorithm that can permute
         # the target phrases.
@@ -293,7 +290,10 @@ def source_phrase_options(f, trans_array, prev_start, prev_end):
         # The latest index that our phrase can start at
         j = min(prev_end + 1 + dist_limit, len(f)-1)
 
-    vrs = valid_ranges(trans_array, i, j)
+    # The last argument restricts the max phrase size to 3.
+    # Just remove the argument or set it to None if you don't want any limit on
+    # phrase size.
+    vrs = valid_ranges(trans_array, i, j, 3)
 
     # A list of tuples, where each element is a possible phrase.
     # Each tuple has: (phrase_start, phrase_end, phrase)
@@ -311,7 +311,7 @@ def source_phrase_options(f, trans_array, prev_start, prev_end):
 # Gets all valid ranges of phrases, restricting the start of the phrase to not
 # go past the start and end indices, and also to not including any previously
 # translated words. start and end are inclusive indices.
-def valid_ranges(trans_array, start, end):
+def valid_ranges(trans_array, start, end, max_len=None):
     valid_ranges = []
 
     vr_start = None
@@ -319,7 +319,11 @@ def valid_ranges(trans_array, start, end):
     for i in xrange(start, end+1):
         # the i'th word is not yet translated
         if not trans_array[i]:
-            for j in xrange(i, len(trans_array)):
+            if max_len is None:
+                j_end = len(trans_array)
+            else:
+                j_end = min(i + max_len, len(trans_array))
+            for j in xrange(i, j_end):
                 if not trans_array[j]:
                     valid_ranges.append((i, j))
                 # If we hit an already translated word, it cannot be part of a
