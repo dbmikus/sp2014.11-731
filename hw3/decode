@@ -51,18 +51,17 @@ def main():
                             'logprob, logfuture, lm_state, trans_array, predecessor, src_ps, src_pe, phrase')
 
     for f in input_sents:
-        phrases_not_found = {}
         trans_array = [False] * len(f)
 
         future_table = compute_future_table(tm, lm, f)
+        # for row in future_table:
+        #     print row
+        # print "\n"
 
-        # The following code implements a DP monotone decoding
-        # algorithm (one that doesn't permute the target phrases).
-        # Hence all hypotheses in stacks[i] represent translations of
-        # the first i words of the input sentence.
-        # HINT: Generalize this so that stacks[i] contains translations
-        # of any i words (remember to keep track of which words those
-        # are, and to estimate future costs)
+        # The following code implements an decoding algorithm that can permute
+        # the target phrases.
+        # Hence all hypotheses in stacks[i] represent translations of where i
+        # words have been translated.
         initial_hypothesis = hypothesis(0.0, 0.0, lm.begin(),
                                         trans_array, None,
                                         None, None, None)
@@ -94,7 +93,7 @@ def main():
                                 prev_start = -1
                             if prev_end is None:
                                 prev_end = -1
-                            alpha = math.log(0.25)
+                            alpha = math.log(0.3)
                             logprob += abs(float(prev_end) + 1.0 - float(s)) * alpha
 
                             # update our coverage vector
@@ -113,8 +112,6 @@ def main():
                             # Adding the hypothesis to the stack if there is not
                             # another equal hypothesis with a better score
                             stacks[nt] = update_stack(stacks[nt], new_hypothesis)
-                    elif len(src_phrase) == 1:
-                        phrases_not_found[src_phrase[0]] = src_phrase[0]
 
         # find best translation by looking at the best scoring hypothesis
         # on the last stack.
@@ -233,8 +230,9 @@ def compute_future_table(tm, lm, f):
             src_phrase = f[i:j+1]
             temp_prob = tm_lm_prob(tm, lm, src_phrase)
             if (j > i):
-                # trans_prob = max(part_table[j-i-1], temp_prob)
-                trans_prob = min(part_table[j-i-1], temp_prob)
+                # TODO fix this.
+                part_prob = tm_lm_prob(tm, lm, f[j:j+1])
+                trans_prob = max(part_table[j-i-1] + part_prob, temp_prob)
             else:
                 trans_prob = temp_prob
             part_table.append(trans_prob)
@@ -273,7 +271,7 @@ def tm_lm_prob(tm, lm, src_phrase):
 # hypothesis), then we just make sure that the distance from the start of the
 # sentence is not too great.
 def source_phrase_options(f, trans_array, prev_start, prev_end):
-    dist_limit = 4
+    dist_limit = 5
 
     i = 0
     earliest_trans = None
