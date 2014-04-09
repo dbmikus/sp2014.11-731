@@ -11,7 +11,7 @@ def setup_parser():
     parser = argparse.ArgumentParser(description='Simple phrase based decoder.')
     parser.add_argument('-i', '--input', dest='input', default='data/input', help='File containing sentences to translate (default=data/input)')
     parser.add_argument('-t', '--translation-model', dest='tm', default='data/tm', help='File containing translation model (default=data/tm)')
-    parser.add_argument('-s', '--stack-size', dest='s', default=25, type=int, help='Maximum stack size (default=25)')
+    parser.add_argument('-s', '--stack-size', dest='s', default=100, type=int, help='Maximum stack size (default=100)')
     parser.add_argument('-n', '--num_sentences', dest='num_sents', default=sys.maxint, type=int, help='Number of sentences to decode (default=no limit)')
     parser.add_argument('-l', '--language-model', dest='lm', default='data/lm', help='File containing ARPA-format language model (default=data/lm)')
     parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', default=False,  help='Verbose mode (default=off)')
@@ -55,7 +55,7 @@ def main():
 
         future_table = compute_future_table(tm, lm, f)
 
-        # The following code implements an decoding algorithm that can permute
+        # The following code implements a decoding algorithm that can permute
         # the target phrases.
         # Hence all hypotheses in stacks[i] represent translations of where i
         # words have been translated.
@@ -90,6 +90,7 @@ def main():
                             for word in tgt_phrase.english.split():
                                 (lm_state, word_logprob) = lm.score(lm_state, word)
                                 logprob += word_logprob
+
                             # reordering cost
                             if prev_start is None:
                                 prev_start = -1
@@ -249,8 +250,7 @@ def tm_lm_prob(tm, lm, src_phrase):
                 (lm_state, word_logprob) = lm.score(lm_state, word)
                 logprob += word_logprob
             logprob += lm.end(lm_state)
-            if (logprob > max_logprob):
-                max_logprob = logprob
+            max_logprob = max(logprob, max_logprob)
         return max_logprob
     # source phrase does not exist in our translation model
     else:
@@ -278,6 +278,8 @@ def source_phrase_options(f, trans_array, prev_start, prev_end):
     # found the first untranslated word / start of a phrase
     if i < len(trans_array):
         earliest_trans = i
+    else:
+        return []
 
     if prev_end is None:
         # The earliest index that our phrase can start at
