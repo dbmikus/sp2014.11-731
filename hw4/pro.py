@@ -26,7 +26,7 @@ def should_add(x):
 # vectors, along with which pair element had a greater gold score.
 # hyps is of the form:
 #   (num, hyp, features)
-def sampler(hyps, ref, num_sample, num_ret):
+def sampler(meteor_scores, hyps, ref, num_sample, num_ret):
     # Get all of the possible pairs between hypotheses, removing the ones that
     # are paired with themselves.
     all_pairs = itertools.combinations(hyps, 2)
@@ -37,8 +37,8 @@ def sampler(hyps, ref, num_sample, num_ret):
     # Compare the gold standard scores for the pairs
     pair_scores = []
     for pair in limited_pairs:
-        h1_score = single_bleu(pair[0][1], ref)
-        h2_score = single_bleu(pair[1][1], ref)
+        h1_score = meteor_scores[pair[0][1]]
+        h2_score = meteor_scores[pair[1][1]]
         if should_add(h1_score - h2_score):
             pair_scores.append((pair[0], pair[1], abs(h1_score - h2_score)))
     sys.stderr.write("Done making list of golden score differences.\n")
@@ -111,6 +111,10 @@ def train_classifier(observed_vectors, targets):
 def main():
     all_hyps = [pair.split(' ||| ') for pair in open('data/dev.100best')]
     all_refs = [ref for ref in open('data/dev.ref')]
+    all_meteor = [float(score) for score in open('meteor-scores.scores')]
+    meteor_dict = {}
+    for sent_score in zip(all_hyps, all_meteor):
+        meteor_dict[sent_score[0][1]] = sent_score[1]
     observed_vectors = []
     targets = []
     num_sents = len(all_hyps) / 100
@@ -131,12 +135,13 @@ def main():
             set_feat_names = True
         ref = all_refs[s]
         sys.stderr.write("Sampling from sentence %d...\n" % s)
-        more_obs_vecs, more_tgts = sampler(hyps_for_one_sent, ref, 5000, 50)
+        more_obs_vecs, more_tgts = sampler(meteor_dict, hyps_for_one_sent, ref,
+                                           5000, 50)
         sys.stderr.write("Done sampling from sentence %d\n\n" % s)
         observed_vectors += more_obs_vecs
         targets += more_tgts
     opt_weight_vec = train_classifier(observed_vectors, targets)
-    print opt_weight_vec
+    print zip(feat_names, opt_weight_vec)
 
 
 if __name__ == '__main__':
