@@ -96,7 +96,7 @@ def limit_shuffle(l, n):
 def train_classifier(observed_vectors, targets):
     classifier = linear_model.Ridge(alpha=0.5)
     classifier.fit(observed_vectors, targets)
-    return clf.coef_
+    return classifier.coef_
 
     # clf = linear_model.LogisticRegression()
     # clf.fit(data[0],data[1])
