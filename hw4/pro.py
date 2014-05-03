@@ -50,10 +50,16 @@ def sampler(hyps, ref, num_sample, num_ret):
         pair_score = pair_scores[i]
         h1_gt_h2 = (single_bleu(pair_score[0][1], ref)
                     > single_bleu(pair_score[1][1], ref))
+        # When computing the difference between feature vectors in a pair, we
+        # are computing a vector from the second pair element to the first pair
+        # element.
         ret_list.append((vector_func_combine(operator.sub,
                                              pair_score[0][2], pair_score[1][2]),
                          h1_gt_h2))
-        # Add the pair in the opposite direction
+        # Add the pair in the opposite direction.
+        # When computing the difference between feature vectors in a pair, we
+        # are computing a vector from the first pair element to the second pair
+        # element.
         ret_list.append((vector_func_combine(operator.sub,
                                              pair_score[1][2], pair_score[0][2]),
                          not h1_gt_h2))
