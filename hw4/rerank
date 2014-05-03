@@ -1,15 +1,27 @@
 #!/usr/bin/env python
-import optparse
-import sys
+import optparse, sys, operator
+import pro
 
 def parse_options():
     optparser = optparse.OptionParser()
-    optparser.add_option("-k", "--kbest-list", dest="input", default="data/test.100best", help="100-best translation lists")
-    optparser.add_option("-t", "--tm1", dest="tm1", default=-0.5, type="float", help="Translation model p(e|f) weight")
-    optparser.add_option("-l", "--lm", dest="lm", default=-1.0, type="float", help="Language model weight")
-    optparser.add_option("-s", "--tm2", dest="tm2", default=-0.5, type="float", help="Lexical translation model p_lex(f|e) weight")
+    optparser.add_option("-k", "--kbest-list", dest="input_list",
+                         default="data/test.100best",
+                         help="100-best translation lists")
+    optparser.add_option("-t", "--tm1", dest="tm1", default=-0.5, type="float",
+                         help="Translation model p(e|f) weight")
+    optparser.add_option("-l", "--lm", dest="lm", default=-1.0, type="float",
+                         help="Language model weight")
+    optparser.add_option("-s", "--tm2", dest="tm2", default=-0.5, type="float",
+                         help="Lexical translation model p_lex(f|e) weight")
     (opts, _) = optparser.parse_args()
     return opts
+
+def feat_vals(feats):
+    ret_vals = []
+    for feat in feats.split(' '):
+        (k, v) = feat.split('=')
+        ret_vals.append(float(v))
+    return ret_vals
 
 def main():
     opts = parse_options()
@@ -18,7 +30,13 @@ def main():
                'p(e|f)'     : float(opts.tm1),
                'p_lex(f|e)' : float(opts.tm2)}
 
-    all_hyps = [pair.split(' ||| ') for pair in open(opts.input)]
+    classifier = pro.sample_and_train_classifier('data/dev.100best',
+                                                 'data/dev.ref',
+                                                 'meteor-scores.scores')
+    # Update the weights based on our pairwise optimization
+    weights = pro.classifier_weight(classifier, weights.keys())
+
+    all_hyps = [pair.split(' ||| ') for pair in open(opts.input_list)]
     num_sents = len(all_hyps) / 100
     for s in xrange(0, num_sents):
       hyps_for_one_sent = all_hyps[s * 100:s * 100 + 100]

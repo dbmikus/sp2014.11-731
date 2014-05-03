@@ -4,8 +4,9 @@ Pairwise ranking optimization.
 
 import sys
 import itertools, operator, math
-from random import randrange
+import random
 from sklearn import linear_model
+from sklearn import svm
 import bleu
 
 def single_bleu(hyp, ref):
@@ -29,10 +30,10 @@ def should_add(x):
 def sampler(meteor_scores, hyps, ref, num_sample, num_ret):
     # Get all of the possible pairs between hypotheses, removing the ones that
     # are paired with themselves.
-    all_pairs = itertools.combinations(hyps, 2)
+    all_pairs = list(itertools.combinations(hyps, 2))
     sys.stderr.write("Done generating combinations.\n")
     # Select num_sample random pairs and put them in a list.
-    limited_pairs = (limit_shuffle(all_pairs, num_sample))[:num_sample]
+    limited_pairs = random.sample(all_pairs, min(num_sample, len(all_pairs)))
     sys.stderr.write("Done getting pairs from combinations.\n")
     # Compare the gold standard scores for the pairs
     pair_scores = []
@@ -55,17 +56,16 @@ def sampler(meteor_scores, hyps, ref, num_sample, num_ret):
     # element.
     for i in xrange(min(num_ret, len(pair_scores))):
         pair_score = pair_scores[i]
-        h1_score = single_bleu(pair_score[0][1], ref)
-        h2_score = single_bleu(pair_score[1][1], ref)
-        gold_diff =  h1_score - h2_score
-        gold_diff_sign = math.copysign(1, gold_diff)
+        h1_score = meteor_scores[pair_score[0][1]]
+        h2_score = meteor_scores[pair_score[1][1]]
+        gold_diff_label = math.copysign(1, h1_score - h2_score)
         # When computing the difference between feature vectors in a pair, we
         # are computing a vector from the second pair element to the first pair
         # element.
         observed_vectors.append(vector_func_combine(operator.sub,
                                                     pair_score[0][2],
                                                     pair_score[1][2]))
-        targets.append(gold_diff_sign)
+        targets.append(gold_diff_label)
         # Add the pair in the opposite direction.
         # When computing the difference between feature vectors in a pair, we
         # are computing a vector from the first pair element to the second pair
@@ -73,7 +73,7 @@ def sampler(meteor_scores, hyps, ref, num_sample, num_ret):
         observed_vectors.append(vector_func_combine(operator.sub,
                                                     pair_score[1][2],
                                                     pair_score[0][2]))
-        targets.append(-1.0 * gold_diff_sign)
+        targets.append(-1 * gold_diff_label)
     sys.stderr.write("Done creating vector points and labels.\n")
     return observed_vectors, targets
 
@@ -86,7 +86,7 @@ def vector_func_combine(oper, v1, v2):
 def limit_shuffle(l, n):
     l = list(l)
     for i in xrange(min(n, len(l))):
-        swap = randrange(i, len(l))
+        swap = random.randrange(i, len(l))
         x = l[i]
         l[i] = l[swap]
         l[swap] = x
@@ -94,24 +94,18 @@ def limit_shuffle(l, n):
 
 
 def train_classifier(observed_vectors, targets):
-    classifier = linear_model.Ridge(alpha=0.5)
+    # classifier = linear_model.Ridge(alpha=0.5)
+    # classifier = svm.LinearSVC()
+    # classifier = linear_model.LogisticRegression()
+    classifier = linear_model.SGDRegressor(alpha=1.0)
     classifier.fit(observed_vectors, targets)
-    return classifier.coef_
-
-    # clf = linear_model.LogisticRegression()
-    # clf.fit(data[0],data[1])
-    # return clf.coef_
-
-    # #clf=linear_model.SGDRegressor(alpha='1.0')
-    # clf=linear_model.SGDRegressor()
-    # clf.fit(training_features,labels)
-    # return clf.predict(test_features)
+    return classifier
 
 
-def main():
-    all_hyps = [pair.split(' ||| ') for pair in open('data/dev.100best')]
-    all_refs = [ref for ref in open('data/dev.ref')]
-    all_meteor = [float(score) for score in open('meteor-scores.scores')]
+def sample_and_train_classifier(hyp_train_file, train_ref_file, meteor_scores_file):
+    all_hyps = [pair.split(' ||| ') for pair in open(hyp_train_file)]
+    all_refs = [ref for ref in open(train_ref_file)]
+    all_meteor = [float(score) for score in open(meteor_scores_file)]
     meteor_dict = {}
     for sent_score in zip(all_hyps, all_meteor):
         meteor_dict[sent_score[0][1]] = sent_score[1]
@@ -140,9 +134,19 @@ def main():
         sys.stderr.write("Done sampling from sentence %d\n\n" % s)
         observed_vectors += more_obs_vecs
         targets += more_tgts
-    opt_weight_vec = train_classifier(observed_vectors, targets)
-    print zip(feat_names, opt_weight_vec)
+    trained_clfr = train_classifier(observed_vectors, targets)
+    weight_vec = classifier_weight(trained_clfr, feat_names)
+    # print weight_vec
+    return trained_clfr
 
+def classifier_weight(classifier, feat_names):
+    coef = classifier.coef_
+    weight_vec = {}
+    for i, feat_name in enumerate(feat_names):
+        weight_vec[feat_name] = coef[i]
+    return weight_vec
 
 if __name__ == '__main__':
-    main()
+    sample_and_train_classifier('data/dev.100best',
+                                'data/dev.ref',
+                                'meteor-scores.scores')
