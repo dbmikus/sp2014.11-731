@@ -35,27 +35,31 @@ def main():
                                                  'meteor-scores.scores')
     # Update the weights based on our pairwise optimization
     weights = pro.classifier_weight(classifier,
-                                    weights.keys())
-    # TODO uncomment
-    # weights = pro.classifier_weight(classifier,
-    #                                 weights.keys() + pro.extra_feat_names())
+                                    weights.keys() + pro.extra_feat_names())
 
     all_hyps = [pair.split(' ||| ') for pair in open(opts.input_list)]
     num_sents = len(all_hyps) / 100
     for s in xrange(0, num_sents):
-      hyps_for_one_sent = all_hyps[s * 100:s * 100 + 100]
-      (best_score, best) = (-1e300, '')
-      for (num, hyp, feats) in hyps_for_one_sent:
-        score = 0.0
-        for feat in feats.split(' '):
-          (k, v) = feat.split('=')
-          score += weights[k] * float(v)
-        if score > best_score:
-          (best_score, best) = (score, hyp)
-      try:
-        sys.stdout.write("%s\n" % best)
-      except (Exception):
-        sys.exit(1)
+        hyps_for_one_sent = all_hyps[s * 100:s * 100 + 100]
+        (best_score, best) = (-1e300, '')
+        for (num, hyp, feats) in hyps_for_one_sent:
+            score = 0.0
+            feat_vec = []
+            feat_names = []
+            for feat in feats.split(' '):
+                (k, v) = feat.split('=')
+                feat_vec.append(float(v))
+                feat_names.append(k)
+            feat_names += pro.extra_feat_names()
+            feat_vec = pro.add_feats(feat_vec, hyp)
+            for name, val in zip(feat_names, feat_vec):
+                score += weights[name] * val
+            if score > best_score:
+                (best_score, best) = (score, hyp)
+        try:
+            sys.stdout.write("%s\n" % best)
+        except (Exception):
+            sys.exit(1)
 
 
 if __name__ == '__main__':
