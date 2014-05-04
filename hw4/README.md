@@ -19,7 +19,9 @@ Following is the list of all of the features:
 How to Run
 --------------------
 If `./meteor-scores.scores` does not exist, you must run:
+
     get_meteor_scores.py
 
 Then, to run and evaluate the scoring:
+
     ./rerank | ./score-meteor
