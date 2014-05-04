@@ -34,7 +34,11 @@ def main():
                                                  'data/dev.ref',
                                                  'meteor-scores.scores')
     # Update the weights based on our pairwise optimization
-    weights = pro.classifier_weight(classifier, weights.keys())
+    weights = pro.classifier_weight(classifier,
+                                    weights.keys())
+    # TODO uncomment
+    # weights = pro.classifier_weight(classifier,
+    #                                 weights.keys() + pro.extra_feat_names())
 
     all_hyps = [pair.split(' ||| ') for pair in open(opts.input_list)]
     num_sents = len(all_hyps) / 100

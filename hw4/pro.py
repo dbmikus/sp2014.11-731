@@ -28,6 +28,12 @@ def should_add(x):
 # hyps is of the form:
 #   (num, hyp, features)
 def sampler(meteor_scores, hyps, ref, num_sample, num_ret):
+    # Add the additional features here. There is a bunch of pointer and
+    # reference stuff going on behind the scenes, so when we have pairs, two
+    # separate pairs can share a hypothesis and if we update the features
+    # anywhere else, we will update them twice.
+    for hyp in hyps:
+        hyp[2] = add_feats(hyp[2], hyp[1])
     # Get all of the possible pairs between hypotheses, removing the ones that
     # are paired with themselves.
     all_pairs = list(itertools.combinations(hyps, 2))
@@ -41,6 +47,8 @@ def sampler(meteor_scores, hyps, ref, num_sample, num_ret):
         h1_score = meteor_scores[pair[0][1]]
         h2_score = meteor_scores[pair[1][1]]
         if should_add(h1_score - h2_score):
+            # We update the feature vectors for the two hypotheses to include
+            # features not read in, but instead computed during runtime.
             pair_scores.append((pair[0], pair[1], abs(h1_score - h2_score)))
     sys.stderr.write("Done making list of golden score differences.\n")
     # Sort the list in descending order by the difference in the gold
@@ -56,6 +64,8 @@ def sampler(meteor_scores, hyps, ref, num_sample, num_ret):
     # element.
     for i in xrange(min(num_ret, len(pair_scores))):
         pair_score = pair_scores[i]
+        h1_vec = pair_score[0][2]
+        h2_vec = pair_score[1][2]
         h1_score = meteor_scores[pair_score[0][1]]
         h2_score = meteor_scores[pair_score[1][1]]
         gold_diff_label = math.copysign(1, h1_score - h2_score)
@@ -63,16 +73,16 @@ def sampler(meteor_scores, hyps, ref, num_sample, num_ret):
         # are computing a vector from the second pair element to the first pair
         # element.
         observed_vectors.append(vector_func_combine(operator.sub,
-                                                    pair_score[0][2],
-                                                    pair_score[1][2]))
+                                                    h1_vec,
+                                                    h2_vec))
         targets.append(gold_diff_label)
         # Add the pair in the opposite direction.
         # When computing the difference between feature vectors in a pair, we
         # are computing a vector from the first pair element to the second pair
         # element.
         observed_vectors.append(vector_func_combine(operator.sub,
-                                                    pair_score[1][2],
-                                                    pair_score[0][2]))
+                                                    h2_vec,
+                                                    h1_vec))
         targets.append(-1 * gold_diff_label)
     sys.stderr.write("Done creating vector points and labels.\n")
     return observed_vectors, targets
@@ -102,6 +112,30 @@ def train_classifier(observed_vectors, targets):
     return classifier
 
 
+# The order of these must match the order of the values we add from add_feats()
+def extra_feat_names():
+    return ['num_target_words',
+            'num_untrans']
+
+# The order of these must match the order of the extra_feat_names()
+def add_feats(old_vec, hypothesis):
+    concat_vec = []
+    # Computing the number of words in the target
+    concat_vec.append(len(hypothesis.split()))
+    # Computing the number of untranslated words
+    concat_vec.append(sum([int(not is_ascii(word))
+                           for word
+                           in hypothesis.split()]))
+    return old_vec + concat_vec
+
+def is_ascii(word):
+    try:
+        word.decode('ascii')
+    except UnicodeDecodeError:
+        return False
+    else:
+        return True
+
 def sample_and_train_classifier(hyp_train_file, train_ref_file, meteor_scores_file):
     all_hyps = [pair.split(' ||| ') for pair in open(hyp_train_file)]
     all_refs = [ref for ref in open(train_ref_file)]
@@ -126,7 +160,9 @@ def sample_and_train_classifier(hyp_train_file, train_ref_file, meteor_scores_fi
                     feat_names.append(k)
                 split_feats.append(float(v))
                 hyps_for_one_sent[i][2] = split_feats
-            set_feat_names = True
+            if not set_feat_names:
+                feat_names += extra_feat_names()
+                set_feat_names = True
         ref = all_refs[s]
         sys.stderr.write("Sampling from sentence %d...\n" % s)
         more_obs_vecs, more_tgts = sampler(meteor_dict, hyps_for_one_sent, ref,
